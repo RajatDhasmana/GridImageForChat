@@ -38,13 +38,13 @@ struct ImageGridView: View {
             .padding()
             .background(Color.green)
             
-            
-            Button {
-                let url1 = URL(string: "https://fastly.picsum.photos/id/821/200/300.jpg?hmac=-CLZlHMcIt8hXlUFZ4-3AvLYDsUJSwUeTri-zHDlnoA")!
-                viewModel.addImageUrl(url: url1)
-            } label: {
-                Text("Add")
-            }
+//            
+//            Button {
+//                let url1 = URL(string: "https://fastly.picsum.photos/id/821/200/300.jpg?hmac=-CLZlHMcIt8hXlUFZ4-3AvLYDsUJSwUeTri-zHDlnoA")!
+//                viewModel.addImageUrl(url: url1)
+//            } label: {
+//                Text("Add")
+//            }
 
         }
         
