@@ -32,10 +32,14 @@ struct ImageGridView: View {
                                 .foregroundStyle(Color.white)
                         }
                     }
+                    .frame(width: getImageWidth(index: index), height: getImageHeight())
+                    .cornerRadius(12)
+
                 }
             }
-            .frame(maxWidth: getViewWidth(), maxHeight: getViewWidth())
-            .padding()
+            .frame(width: getViewWidth(), height: getViewWidth())
+//            .clipped()
+            .padding(10)
             .background(Color.green)
             
 //            
@@ -47,8 +51,6 @@ struct ImageGridView: View {
 //            }
 
         }
-        
-       
     }
 }
 
@@ -56,21 +58,34 @@ extension ImageGridView {
     
     private func getViewWidth() -> CGFloat {
         
-        (getRect().width * 60) / 100
+        ((getRect().width * 60) / 100)
     }
+    
     
     func getImageWidth(index: Int) -> CGFloat {
 
         let width = (getRect().width * 60) / 100
-        let totalImageCount = viewModel.getImagesUrl().count
-        if totalImageCount % 2 == 0 {
+        
+        if viewModel.getImagesUrl().count % 2 == 0 {
             return width / 2
         } else {
-            if index == totalImageCount - 1 {
-                return width
+            if index == viewModel.getImagesUrl().count - 1 {
+                return width + 5
             } else {
                 return width / 2
             }
+        }
+    }
+    
+    func getImageHeight() -> CGFloat {
+        
+        let height = getRect().width * 0.6
+//        let height = ((getRect().width * 0.6) / 2) + 5
+        
+        if viewModel.getImagesUrl().count == 2 {
+            return height
+        } else {
+            return (height / 2) + 5
         }
     }
 }

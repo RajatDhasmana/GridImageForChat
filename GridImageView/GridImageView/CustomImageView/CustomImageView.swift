@@ -20,8 +20,8 @@ struct CustomImageView: View {
             
             Image("dummyImage")
                 .resizable()
-                .clipped()
-                .cornerRadius(12)
+//                .clipped()
+//                .cornerRadius(12)
                 .aspectRatio(contentMode: .fill)
 
             
@@ -33,9 +33,9 @@ struct CustomImageView: View {
 //            }
             
         }
-        .frame(width: getImageWidth(), height: getImageHeight())
-        .clipped()
-        .cornerRadius(12)
+//        .frame(width: getImageWidth(), height: getImageHeight())
+//        .clipped()
+//        .cornerRadius(12)
         .background(Color.blue)
 
     }

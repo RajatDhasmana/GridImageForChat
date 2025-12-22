@@ -9,7 +9,8 @@ import Foundation
 
 
 
-struct Message {
+struct Message: Identifiable
+{
     var id: String
     var text: String?
     var imageUrl: URL?
