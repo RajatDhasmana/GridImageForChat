@@ -46,3 +46,5 @@ struct VerticalImageListView: View {
         
     VerticalImageListView(messages: [message1, message2, message3])
 }
+
+
