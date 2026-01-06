@@ -110,7 +110,6 @@ struct ChatView: View {
         
         
         
-        
 //        MessageListView(chatViewModel: vm)
 //            .onAppear {
 //                
@@ -123,9 +122,8 @@ struct ChatView: View {
             ScrollView {
                 LazyVStack(spacing: 12) {
 
-                    
                     ProgressView()
-                        .onAppear {
+                        .onTapGesture {
                             
                             print("start pagination")
                             
@@ -133,54 +131,20 @@ struct ChatView: View {
                             
                             
                             if let firstMessage = vm.messages.first {
-                                
-//                                proxy.scrollTo(firstMessage.id, anchor: .bottom)
-                                
+                                                                
                                 vm.scrollPosition?.id = firstMessage.id
 
                                 Task {
                                     await vm.loadMoreMessages()
                                 }
-
                             }
-
                         }
-                    
                     ForEach(vm.messages) { message in
                         Text(message.text)
                             .padding()
                             .background(Color.gray.opacity(0.2))
                             .cornerRadius(8)
                             .id(message.id)
-//                            .onAppear {
-//                                
-//                                
-////                                print("\(message.text) appeared")
-//                                
-//                                guard vm.hasUserScrolled else { return }
-//                                
-//                                
-//                                if message == vm.messages.first {
-//                                    topVisibleMessageID = message.id
-//                                    Task {
-//                                        
-//                                        await vm.loadMoreMessages()
-//                                        
-//                                        proxy.scrollTo(message.id, anchor: .center)
-//
-////                                        DispatchQueue.main.async {
-////                                            if let id = vm.scrollToId {
-////                                                proxy.scrollTo(id, anchor: .bottom)
-////                                            }
-////                                        }
-//
-//                                        
-////                                        if let id = vm.scrollToId {
-////                                            proxy.scrollTo(id, anchor: .bottom)
-////                                        }
-//                                    }
-//                                }
-//                            }
                     }
                 }
                 .padding()
@@ -189,10 +153,8 @@ struct ChatView: View {
             .onScrollPhaseChange { phase, _  in
                 switch phase {
                 case .interacting, .decelerating:
-//                    isUserScrolling = true
                     vm.hasUserScrolled = true
                 case .idle:
-//                    isUserScrolling = false
                     vm.hasUserScrolled = false
                 default:
                     break
@@ -207,27 +169,17 @@ struct ChatView: View {
             .onChange(of: vm.scrollPosition) { oldValue, newValue in
                 
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+//                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         
                     if let m = vm.messages.first(where: {$0.id == vm.scrollPosition?.id}) {
                             print("scroll to => \(m.text)")
                         }
-                                  
-                        proxy.scrollTo(vm.scrollPosition?.id, anchor: vm.scrollPosition?.position.unitPoint)
+                              
+                DispatchQueue.main.async {
+                    proxy.scrollTo(vm.scrollPosition?.id, anchor: .top)
+
                 }
             }
-            
-            
-            
-//            .onChange(of: vm.scrollToLast) { oldValue, newValue in
-//                if newValue {
-//                    if let last = vm.messages.last {
-//                        proxy.scrollTo(last.id, anchor: .bottom)
-//                        vm.scrollToLast = false
-//                    }
-//
-//                }
-//            }
         }
     }
 }
