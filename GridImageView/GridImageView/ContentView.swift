@@ -14,9 +14,11 @@ struct ContentView: View {
         
         
     var body: some View {
-        VStack {
-            ChatMessageView()
-        }
+//        VStack {
+//            ChatMessageView()
+//        }
+        
+        ChatView()
     }
 }
 
