@@ -150,16 +150,16 @@ struct ChatView: View {
                 .padding()
             }
             
-            .onScrollPhaseChange { phase, _  in
-                switch phase {
-                case .interacting, .decelerating:
-                    vm.hasUserScrolled = true
-                case .idle:
-                    vm.hasUserScrolled = false
-                default:
-                    break
-                }
-            }
+//            .onScrollPhaseChange { phase, _  in
+//                switch phase {
+//                case .interacting, .decelerating:
+//                    vm.hasUserScrolled = true
+//                case .idle:
+//                    vm.hasUserScrolled = false
+//                default:
+//                    break
+//                }
+//            }
             
             .onAppear {
                 

@@ -18,7 +18,8 @@ struct ContentView: View {
 //            ChatMessageView()
 //        }
         
-        ChatView()
+//        ChatView()
+        ChatListView()
     }
 }
 
