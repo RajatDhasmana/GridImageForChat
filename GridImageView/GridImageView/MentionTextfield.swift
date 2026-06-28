@@ -23,6 +23,10 @@ struct GroupMember: Identifiable, Hashable {
         GroupMember(id: UUID(), name: "David Chen",     avatar: "DC", color: .orange),
         GroupMember(id: UUID(), name: "Emma Davis",     avatar: "ED", color: .pink),
         GroupMember(id: UUID(), name: "Frank Torres",   avatar: "FT", color: .teal),
+        GroupMember(id: UUID(), name: "Alice Johnson2",  avatar: "AJ", color: .blue),
+        GroupMember(id: UUID(), name: "Alice Johnson3",  avatar: "AJ", color: .blue),
+
+
     ]
 }
 
@@ -347,47 +351,102 @@ struct MentionTextView: UIViewRepresentable {
 
 // MARK: - MentionSuggestionsView
 
+//struct MentionSuggestionsView: View {
+//    let members: [GroupMember]
+//    let onSelect: (GroupMember) -> Void
+//
+//    var body: some View {
+//        VStack(alignment: .leading, spacing: 0) {
+//            ForEach(Array(members.enumerated()), id: \.element.id) { idx, member in
+//                Button(action: { onSelect(member) }) {
+//                    HStack(spacing: 12) {
+//                        // Avatar circle
+//                        ZStack {
+//                            Circle()
+//                                .fill(member.color.opacity(0.18))
+//                            Text(member.avatar)
+//                                .font(.system(size: 12, weight: .semibold))
+//                                .foregroundColor(member.color)
+//                        }
+//                        .frame(width: 36, height: 36)
+//
+//                        VStack(alignment: .leading, spacing: 2) {
+//                            Text(member.name)
+//                                .font(.system(size: 15, weight: .medium))
+//                                .foregroundColor(.primary)
+//                        }
+//                        Spacer()
+//
+//                        Image(systemName: "at")
+//                            .font(.system(size: 12))
+//                            .foregroundColor(.secondary)
+//                    }
+//                    .padding(.horizontal, 16)
+//                    .padding(.vertical, 10)
+//                    .contentShape(Rectangle())
+//                }
+//                .buttonStyle(.plain)
+//
+//                if idx < members.count - 1 {
+//                    Divider().padding(.leading, 64)
+//                }
+//            }
+//        }
+//        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+//        .overlay(
+//            RoundedRectangle(cornerRadius: 14)
+//                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+//        )
+//        .shadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 6)
+//    }
+//}
+
+// MARK: - MentionSuggestionsView (scrollable)
+
 struct MentionSuggestionsView: View {
     let members: [GroupMember]
+    let maxHeight: CGFloat          // ← passed in from parent
     let onSelect: (GroupMember) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(members.enumerated()), id: \.element.id) { idx, member in
-                Button(action: { onSelect(member) }) {
-                    HStack(spacing: 12) {
-                        // Avatar circle
-                        ZStack {
-                            Circle()
-                                .fill(member.color.opacity(0.18))
-                            Text(member.avatar)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(member.color)
-                        }
-                        .frame(width: 36, height: 36)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(members.enumerated()), id: \.element.id) { idx, member in
+                    Button(action: { onSelect(member) }) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(member.color.opacity(0.18))
+                                
+                                Text(member.avatar)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(member.color)
+                            }
+                            .frame(width: 30, height: 30)
 
-                        VStack(alignment: .leading, spacing: 2) {
                             Text(member.name)
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundColor(.primary)
+
+                            Spacer()
+
+                            Image(systemName: "at")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
                         }
-                        Spacer()
-
-                        Image(systemName: "at")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                        .padding(.horizontal, 16)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                    .buttonStyle(.plain)
+                    .frame(height: 60)
 
-                if idx < members.count - 1 {
-                    Divider().padding(.leading, 64)
+                    if idx < members.count - 1 {
+                        Divider().padding(.leading, 64)
+                    }
                 }
             }
         }
+        .frame(height: maxHeight)// ← constrain height
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
@@ -399,6 +458,96 @@ struct MentionSuggestionsView: View {
 
 // MARK: - GroupChatInputBar
 
+//struct GroupChatInputBar: View {
+//
+//    let members: [GroupMember]
+//
+//    @State private var segments: [MessageSegment] = []
+//    @State private var mentionQuery: String? = nil
+//    @State private var filteredMembers: [GroupMember] = []
+//
+//    // A reference to the coordinator so we can call insertMention
+//    @State private var textViewRef: UITextView? = nil
+//    @State private var coordinatorRef: MentionTextView.Coordinator? = nil
+//
+//    var body: some View {
+//        VStack(spacing: 0) {
+//            // Mention suggestions popup
+//            if let _ = mentionQuery, !filteredMembers.isEmpty {
+//                MentionSuggestionsView(members: filteredMembers) { member in
+//                    guard let tv = textViewRef, let coord = coordinatorRef else { return }
+//                    coord.insertMention(member, into: tv)
+//                }
+//                .padding(.horizontal, 12)
+//                .padding(.bottom, 6)
+//                .transition(.move(edge: .bottom).combined(with: .opacity))
+//            }
+//
+//            // Input row
+//            HStack(alignment: .bottom, spacing: 10) {
+//                // Attachment button
+//                Button(action: {}) {
+//                    Image(systemName: "plus.circle.fill")
+//                        .font(.system(size: 28))
+//                        .foregroundStyle(.secondary)
+//                }
+//
+//                // Text field
+//                ZStack(alignment: .topLeading) {
+//                    MentionTextViewWrapper(
+//                        segments: $segments,
+//                        mentionQuery: $mentionQuery,
+//                        onTextViewReady: { tv, coord in
+//                            textViewRef = tv
+//                            coordinatorRef = coord
+//                        }
+//                    )
+//                    .frame(minHeight: 40, maxHeight: 120)
+//                }
+//                .padding(.horizontal, 12)
+//                .padding(.vertical, 4)
+//                .background(
+//                    RoundedRectangle(cornerRadius: 20)
+//                        .fill(Color(.secondarySystemBackground))
+//                )
+//                .overlay(
+//                    RoundedRectangle(cornerRadius: 20)
+//                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+//                )
+//
+//                // Send button
+//                Button(action: sendMessage) {
+//                    Image(systemName: segments.isEmpty ? "mic.fill" : "arrow.up.circle.fill")
+//                        .font(.system(size: 28))
+//                        .foregroundStyle(segments.isEmpty ? .red : .blue)
+//                        .animation(.spring(response: 0.3), value: segments.isEmpty)
+//                }
+//            }
+//            .padding(.horizontal, 12)
+//            .padding(.vertical, 10)
+//            .background(.regularMaterial)
+//        }
+//        .onChange(of: mentionQuery) { query in
+//            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+//                if let q = query {
+//                    filteredMembers = members.filter {
+//                        q.isEmpty || $0.name.localizedCaseInsensitiveContains(q)
+//                    }
+//                } else {
+//                    filteredMembers = []
+//                }
+//            }
+//        }
+//    }
+//
+//    private func sendMessage() {
+//        // TODO: handle send
+//        segments = []
+//    }
+//}
+
+
+
 struct GroupChatInputBar: View {
 
     let members: [GroupMember]
@@ -406,19 +555,24 @@ struct GroupChatInputBar: View {
     @State private var segments: [MessageSegment] = []
     @State private var mentionQuery: String? = nil
     @State private var filteredMembers: [GroupMember] = []
-
-    // A reference to the coordinator so we can call insertMention
     @State private var textViewRef: UITextView? = nil
     @State private var coordinatorRef: MentionTextView.Coordinator? = nil
+    @State private var keyboardHeight: CGFloat = 0
+    
+    // ← New: store the measured space above the input bar
+    @State private var availableHeightAboveBar: CGFloat = 300
 
     var body: some View {
         VStack(spacing: 0) {
-            // Mention suggestions popup
             if let _ = mentionQuery, !filteredMembers.isEmpty {
-                MentionSuggestionsView(members: filteredMembers) { member in
-                    guard let tv = textViewRef, let coord = coordinatorRef else { return }
-                    coord.insertMention(member, into: tv)
-                }
+                MentionSuggestionsView(
+                    members: filteredMembers,
+                    maxHeight: availableHeightAboveBar - 16,  // ← 16pt bottom padding
+                    onSelect: { member in
+                        guard let tv = textViewRef, let coord = coordinatorRef else { return }
+                        coord.insertMention(member, into: tv)
+                    }
+                )
                 .padding(.horizontal, 12)
                 .padding(.bottom, 6)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -426,14 +580,12 @@ struct GroupChatInputBar: View {
 
             // Input row
             HStack(alignment: .bottom, spacing: 10) {
-                // Attachment button
                 Button(action: {}) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 28))
                         .foregroundStyle(.secondary)
                 }
 
-                // Text field
                 ZStack(alignment: .topLeading) {
                     MentionTextViewWrapper(
                         segments: $segments,
@@ -443,20 +595,98 @@ struct GroupChatInputBar: View {
                             coordinatorRef = coord
                         }
                     )
-                    .frame(minHeight: 40, maxHeight: 120)
+                    .frame(height: 40)
+//                    .frame(minHeight: 40, maxHeight: 120)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground)))
+                .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
                 .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color(.secondarySystemBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear {
+                                // geo.frame(in: .global).minY = top of the input bar
+                                // We want the space from the nav bar to the top of input bar.
+                                // Store it for capping the suggestion list height.
+                                availableHeightAboveBar = geo.frame(in: .global).minY - safeAreaTop()
+                            }
+                            .onChange(of: filteredMembers.count, { oldValue, newValue in
+                                
+//                                let screenHeight = geo.frame(in: .global).maxY
+//                                let navHeight = safeAreaTop()
+//                                let textViewHeight = geo.size.height
+//                                let messageListHeight = screenHeight - navHeight - textViewHeight
+////                                
+//                                let listHeight = CGFloat(newValue * 60)
+//                                let finalHeight = min(messageListHeight, listHeight)
+//                                guard finalHeight > 0 else { return }
+//                                availableHeightAboveBar = 480//finalHeight
+//                                print("Rajat: availableHeightAboveBar => \(availableHeightAboveBar)")
+//                                print("Rajat: finalHeight => \(finalHeight)")
+//                                print("Rajat: listHeight => \(listHeight)")
+//                                print("Rajat: messageListHeight => \(messageListHeight)")
+                                
+                                
+                                
+                                
+                                let screenHeight = UIScreen.main.bounds.height          // ← full screen, not geo.maxY
+                                let navHeight = safeAreaTop()
+                                let textViewHeight = geo.size.height
+                                let inputBarPadding: CGFloat = 20                        // .padding(.vertical, 10) × 2
+
+                                let availableSpace = screenHeight
+                                    - navHeight
+                                    - textViewHeight
+                                    - inputBarPadding
+                                    - keyboardHeight                                     // ← subtract keyboard
+
+                                let listHeight = CGFloat(newValue) * 60
+                                let computed = min(availableSpace, listHeight)
+
+                                guard computed > 0 else { return }
+                                availableHeightAboveBar = computed
+                                
+                                
+                            })
+                            .onChange(of: geo.frame(in: .global).minY) { _, _ in
+                                
+//                                let screenHeight = geo.frame(in: .global).maxY
+//                                let navHeight = safeAreaTop()
+//                                let textViewHeight = geo.size.height
+//                                let messageListHeight = screenHeight - navHeight - textViewHeight
+////
+//                                let listHeight = CGFloat(filteredMembers.count * 60)
+//                                let finalHeight = min(messageListHeight, listHeight)
+//                                guard finalHeight > 0 else { return }
+//
+//                                availableHeightAboveBar = 480//finalHeight
+//                                print("Rajat: availableHeightAboveBar => \(availableHeightAboveBar)")
+//                                print("Rajat: finalHeight => \(finalHeight)")
+//                                print("Rajat: listHeight on change textview frame => \(listHeight)")
+//                                print("Rajat: messageListHeight => \(messageListHeight)")
+                                
+                                
+                                let screenHeight = UIScreen.main.bounds.height          // ← full screen, not geo.maxY
+                                let navHeight = safeAreaTop()
+                                let textViewHeight = geo.size.height
+                                let inputBarPadding: CGFloat = 20                        // .padding(.vertical, 10) × 2
+
+                                let availableSpace = screenHeight
+                                    - navHeight
+                                    - textViewHeight
+                                    - inputBarPadding
+                                    - keyboardHeight                                     // ← subtract keyboard
+
+                                let listHeight = CGFloat(filteredMembers.count) * 60
+                                let computed = min(availableSpace, listHeight)
+
+                                guard computed > 0 else { return }
+                                availableHeightAboveBar = computed
+                            }
+                    }
                 )
 
-                // Send button
                 Button(action: sendMessage) {
                     Image(systemName: segments.isEmpty ? "mic.fill" : "arrow.up.circle.fill")
                         .font(.system(size: 28))
@@ -467,6 +697,32 @@ struct GroupChatInputBar: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(.regularMaterial)
+        }
+//        .overlay(alignment: .top, content: {
+//            
+//            if let _ = mentionQuery, !filteredMembers.isEmpty {
+//                MentionSuggestionsView(
+//                    members: filteredMembers,
+//                    maxHeight: availableHeightAboveBar - 16,  // ← 16pt bottom padding
+//                    onSelect: { member in
+//                        guard let tv = textViewRef, let coord = coordinatorRef else { return }
+//                        coord.insertMention(member, into: tv)
+//                    }
+//                )
+//                .padding(.horizontal, 12)
+//                .padding(.bottom, 6)
+//                .transition(.move(edge: .bottom).combined(with: .opacity))
+//            }
+//            
+//        })
+        
+        .onAppear {
+            NotificationCenter.default.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
+                                                   object: nil, queue: .main) { notification in
+                guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+                let screenHeight = UIScreen.main.bounds.height
+                keyboardHeight = max(0, screenHeight - frame.minY)
+            }
         }
         .onChange(of: mentionQuery) { query in
             withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
@@ -482,8 +738,14 @@ struct GroupChatInputBar: View {
     }
 
     private func sendMessage() {
-        // TODO: handle send
         segments = []
+    }
+
+    // Utility: top safe area inset
+    private func safeAreaTop() -> CGFloat {
+        let scenes = UIApplication.shared.connectedScenes
+        let windowScene = scenes.first as? UIWindowScene
+        return windowScene?.windows.first?.safeAreaInsets.top ?? 44
     }
 }
 
