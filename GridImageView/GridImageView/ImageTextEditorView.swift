@@ -974,7 +974,7 @@ struct ImageTextEditorViewPreviewHost: View {
 */
 
 
-
+/*
 import SwiftUI
 
 // MARK: - Text Item Model
@@ -1307,6 +1307,622 @@ private struct HueColorBar: View {
         guard width > 0 else { return }
         let clampedX = min(max(x, 0), width)
         let hue = clampedX / width
+        selectedColor = Color(hue: hue, saturation: 0.9, brightness: 1.0)
+    }
+}
+
+// MARK: - Model
+
+@MainActor
+final class TextEditorModel: ObservableObject {
+
+    let image: UIImage
+
+    /// All text items currently on the canvas.
+    @Published var textItems: [TextItem] = []
+    /// The item currently active for drag/zoom/color/edit, if any.
+    @Published var selectedID: UUID?
+
+    @Published var isEditingText: Bool = false
+    @Published var isDraggingText: Bool = false
+    @Published var isZoomingText: Bool = false
+
+    private(set) var currentCanvasFrame: CGRect = .zero
+
+    // Drag/zoom snapshots, captured once per gesture (see translation-from-
+    // snapshot note in dragText/zoomText below).
+    private var dragStartPosition: CGPoint = .zero
+    private var fontSizeAtZoomStart: CGFloat = 32
+    private var activeGestureID: UUID?
+
+    private let minFontSize: CGFloat = 12
+    private let maxFontSize: CGFloat = 160
+
+    init(image: UIImage) {
+        self.image = image
+    }
+
+    // MARK: Bindings for the selected item
+    //
+    // The hidden keyboard input and the color bar both need a `Binding` into
+    // "whichever item is selected right now." These computed bindings read
+    // and write through to that item inside `textItems`, falling back to a
+    // no-op binding when nothing is selected (e.g. color bar is hidden then,
+    // so this path just guards against transient access).
+
+    var selectedTextBinding: Binding<String> {
+        Binding(
+            get: { [weak self] in
+                guard let self, let id = self.selectedID,
+                      let item = self.textItems.first(where: { $0.id == id }) else { return "" }
+                return item.text
+            },
+            set: { [weak self] newValue in
+                guard let self, let id = self.selectedID else { return }
+                self.updateItem(id) { $0.text = newValue }
+            }
+        )
+    }
+
+    var selectedColorBinding: Binding<Color> {
+        Binding(
+            get: { [weak self] in
+                guard let self, let id = self.selectedID,
+                      let item = self.textItems.first(where: { $0.id == id }) else { return .white }
+                return item.color
+            },
+            set: { [weak self] newValue in
+                guard let self, let id = self.selectedID else { return }
+                self.updateItem(id) { $0.color = newValue }
+            }
+        )
+    }
+
+    /// Mutates the item with the given id in place, if it exists.
+    private func updateItem(_ id: UUID, _ mutate: (inout TextItem) -> Void) {
+        guard let index = textItems.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&textItems[index])
+    }
+
+    // MARK: Layout (identical aspect-fit approach to the cropper view)
+
+    func fittedImageFrame(in containerSize: CGSize) -> CGRect {
+        guard image.size.width > 0, image.size.height > 0,
+              containerSize.width > 0, containerSize.height > 0 else {
+            return CGRect(origin: .zero, size: containerSize)
+        }
+        let imageAspect = image.size.width / image.size.height
+        let containerAspect = containerSize.width / containerSize.height
+
+        var size = containerSize
+        if imageAspect > containerAspect {
+            size.width = containerSize.width
+            size.height = containerSize.width / imageAspect
+        } else {
+            size.height = containerSize.height
+            size.width = containerSize.height * imageAspect
+        }
+        let origin = CGPoint(x: (containerSize.width - size.width) / 2,
+                              y: (containerSize.height - size.height) / 2)
+        return CGRect(origin: origin, size: size)
+    }
+
+    func setupCanvas(in frame: CGRect) {
+        currentCanvasFrame = frame
+    }
+
+    /// Rescales all items proportionally when the canvas frame changes size
+    /// (e.g. on device rotation), preserving relative positions/sizes.
+    func rescaleCanvas(to newFrame: CGRect) {
+        let old = currentCanvasFrame
+        guard old.width > 0, old.height > 0 else {
+            currentCanvasFrame = newFrame
+            return
+        }
+        let sx = newFrame.width / old.width
+        let sy = newFrame.height / old.height
+        for index in textItems.indices {
+            textItems[index].position.x *= sx
+            textItems[index].position.y *= sy
+            textItems[index].fontSize *= (sx + sy) / 2
+        }
+        currentCanvasFrame = newFrame
+    }
+
+    // MARK: Text lifecycle
+
+    /// Adds a new text item near the center of the canvas (offset slightly
+    /// per existing item so new items don't stack exactly on top of others)
+    /// and selects it for immediate editing.
+    func addText() {
+        let baseOffset: CGFloat = 18
+        let count = CGFloat(textItems.count)
+        let center = CGPoint(
+            x: currentCanvasFrame.width / 2 + (count.truncatingRemainder(dividingBy: 5) - 2) * baseOffset,
+            y: currentCanvasFrame.height / 2 + (count.truncatingRemainder(dividingBy: 5) - 2) * baseOffset
+        )
+        let newItem = TextItem(text: "", position: center)
+        textItems.append(newItem)
+        selectedID = newItem.id
+        isEditingText = true
+    }
+
+    func select(_ id: UUID) {
+        guard selectedID != id else { return }
+        selectedID = id
+    }
+
+    func removeSelectedText() {
+        guard let id = selectedID else { return }
+        textItems.removeAll { $0.id == id }
+        selectedID = nil
+        isEditingText = false
+    }
+
+    // MARK: Dragging — translation from a snapshot taken at gesture start.
+    //
+    // `value.translation` from DragGesture is the cumulative offset from
+    // the finger's down-location, which stays stable even though the
+    // handle's on-screen position changes every time we mutate `textItems`
+    // mid-gesture. Reading `value.location` against the live, constantly-
+    // moving position is what caused the earlier "stuck after dragging one
+    // direction" bug — translation-from-snapshot avoids that entirely.
+
+    func beginTextDrag(for id: UUID) {
+        activeGestureID = id
+        if let item = textItems.first(where: { $0.id == id }) {
+            dragStartPosition = item.position
+        }
+        isDraggingText = true
+    }
+
+    func endTextDrag() {
+        isDraggingText = false
+        activeGestureID = nil
+    }
+
+    func dragText(translation: CGSize, bounds: CGRect) {
+        guard let id = activeGestureID else { return }
+        let proposed = CGPoint(
+            x: dragStartPosition.x + translation.width,
+            y: dragStartPosition.y + translation.height
+        )
+        let clamped = CGPoint(
+            x: min(max(proposed.x, bounds.minX), bounds.maxX),
+            y: min(max(proposed.y, bounds.minY), bounds.maxY)
+        )
+        updateItem(id) { $0.position = clamped }
+    }
+
+    // MARK: Zooming (pinch-to-resize text) — same snapshot principle as drag.
+
+    func beginTextZoom(for id: UUID) {
+        activeGestureID = id
+        if let item = textItems.first(where: { $0.id == id }) {
+            fontSizeAtZoomStart = item.fontSize
+        }
+        isZoomingText = true
+    }
+
+    func zoomText(scale: CGFloat) {
+        guard let id = activeGestureID else { return }
+        let proposed = fontSizeAtZoomStart * scale
+        let clamped = min(max(proposed, minFontSize), maxFontSize)
+        updateItem(id) { $0.fontSize = clamped }
+    }
+
+    func endTextZoom() {
+        isZoomingText = false
+        activeGestureID = nil
+    }
+
+    // MARK: Rendering final image
+
+    /// Composites every text item onto the original image at full
+    /// resolution and returns the result. Each item's position/size are
+    /// scaled from the on-screen canvas (points) into the image's own
+    /// pixel space.
+    func renderFinalImage() -> UIImage? {
+        let frame = currentCanvasFrame
+        guard frame.width > 0, frame.height > 0 else { return image }
+
+        let itemsToDraw = textItems.filter { !$0.text.isEmpty }
+        guard !itemsToDraw.isEmpty else { return image }
+
+        // UIImage.size is already in points, and UIGraphicsImageRenderer below
+        // renders in that same point space — so we just need the ratio between
+        // the image's point-size and the on-screen canvas's point-size.
+        let scaleX = image.size.width / frame.width
+        let scaleY = image.size.height / frame.height
+
+        let renderer = UIGraphicsImageRenderer(size: image.size)
+        let rendered = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+
+            for item in itemsToDraw {
+                let scaledFontSize = item.fontSize * ((scaleX + scaleY) / 2)
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.boldSystemFont(ofSize: scaledFontSize),
+                    .foregroundColor: UIColor(item.color)
+                ]
+
+                let attributedText = NSAttributedString(string: item.text, attributes: attributes)
+                let textSize = attributedText.size()
+
+                let centerInImageSpace = CGPoint(x: item.position.x * scaleX, y: item.position.y * scaleY)
+                let drawOrigin = CGPoint(
+                    x: centerInImageSpace.x - textSize.width / 2,
+                    y: centerInImageSpace.y - textSize.height / 2
+                )
+
+                attributedText.draw(at: drawOrigin)
+            }
+        }
+
+        return rendered
+    }
+}
+
+// MARK: - Preview
+
+#Preview {
+    ImageTextEditorViewPreviewHost()
+}
+
+struct ImageTextEditorViewPreviewHost: View {
+    @State private var resultImage: UIImage?
+
+    var body: some View {
+        if let img = UIImage(named: "dummyImage") {
+            ImageTextEditorView(image: img) { edited in
+                resultImage = edited
+            }
+        } else {
+            Text("No preview image — add \"photo1\" to Assets.xcassets")
+        }
+    }
+}
+
+*/
+
+
+
+import SwiftUI
+
+// MARK: - Text Item Model
+
+/// A single text overlay: its content, position, size, and color.
+/// Multiple of these can exist on the canvas at once.
+struct TextItem: Identifiable, Equatable {
+    let id: UUID
+    var text: String
+    var position: CGPoint   // canvas-local coordinates (points)
+    var fontSize: CGFloat
+    var color: Color
+
+    init(id: UUID = UUID(), text: String = "", position: CGPoint, fontSize: CGFloat = 32, color: Color = .white) {
+        self.id = id
+        self.text = text
+        self.position = position
+        self.fontSize = fontSize
+        self.color = color
+    }
+}
+
+// MARK: - Public View
+
+struct ImageTextEditorView: View {
+
+    let image: UIImage
+    /// Called with the image with all text items composited onto it, or nil if rendering failed.
+    let onComplete: (UIImage?) -> Void
+
+    /// Optional: called if the user cancels.
+    var onCancel: (() -> Void)? = nil
+
+    @StateObject private var model: TextEditorModel
+
+    init(image: UIImage, onCancel: (() -> Void)? = nil, onComplete: @escaping (UIImage?) -> Void) {
+        self.image = image
+        self.onCancel = onCancel
+        self.onComplete = onComplete
+        _model = StateObject(wrappedValue: TextEditorModel(image: image))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                Color.black.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    topBar
+                        .padding(.top, max(geo.safeAreaInsets.top, 12))
+
+                    Spacer(minLength: 0)
+
+                    // The image canvas with all draggable text overlays.
+                    GeometryReader { canvasGeo in
+                        let fitted = model.fittedImageFrame(in: canvasGeo.size)
+
+                        ZStack {
+                            Image(uiImage: image)
+                                .resizable()
+                                .frame(width: fitted.width, height: fitted.height)
+                                .position(x: fitted.midX, y: fitted.midY)
+                                .onTapGesture {
+                                    // Tapping empty image space deselects the active
+                                    // text item and dismisses the keyboard.
+                                    model.isEditingText = false
+                                    model.selectedID = nil
+                                }
+
+                            ForEach(model.textItems) { item in
+                                DraggableTextView(model: model, item: item, canvasFrame: fitted)
+                            }
+
+                            // Vertical color bar, pinned to the right edge of the
+                            // canvas. Only shown while a text item is selected —
+                            // it recolors that one item, not all of them.
+                            if model.selectedID != nil {
+                                HStack {
+                                    Spacer()
+                                    VerticalHueColorBar(selectedColor: model.selectedColorBinding)
+                                        .frame(width: 36, height: min(canvasGeo.size.height * 0.7, 260))
+                                        .padding(.trailing, 8)
+                                }
+                            }
+                        }
+                        .onAppear {
+                            model.setupCanvas(in: fitted)
+                        }
+                        .onChange(of: canvasGeo.size) { _, newSize in
+                            let newFitted = model.fittedImageFrame(in: newSize)
+                            model.rescaleCanvas(to: newFitted)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+
+                    Spacer(minLength: 0)
+
+                    bottomControls
+                        .padding(.bottom, max(geo.safeAreaInsets.bottom, 16))
+                }
+            }
+        }
+        // Hidden text field that drives keyboard text entry for whichever
+        // text item is currently selected.
+        .background(
+            HiddenTextInput(text: model.selectedTextBinding, isActive: $model.isEditingText)
+        )
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    // MARK: Top bar
+
+    private var topBar: some View {
+        HStack {
+            Button {
+                onCancel?()
+            } label: {
+                Text("Cancel")
+                    .foregroundStyle(.white)
+            }
+
+            Spacer()
+
+            Button {
+                let result = model.renderFinalImage()
+                onComplete(result)
+            } label: {
+                Text("Done")
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(Color.white, in: Capsule())
+            }
+        }
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: Bottom controls
+
+    private var bottomControls: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 24) {
+                Button {
+                    model.addText()
+                } label: {
+                    Label("Add Text", systemImage: "textformat")
+                        .foregroundStyle(.white)
+                        .font(.callout.weight(.medium))
+                }
+
+                if model.selectedID != nil {
+                    Button {
+                        model.isEditingText = true
+                    } label: {
+                        Label("Edit", systemImage: "pencil")
+                            .foregroundStyle(.white)
+                            .font(.callout.weight(.medium))
+                    }
+
+                    Button(role: .destructive) {
+                        model.removeSelectedText()
+                    } label: {
+                        Label("Remove", systemImage: "trash")
+                            .foregroundStyle(.white)
+                            .font(.callout.weight(.medium))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Draggable text overlay
+
+private struct DraggableTextView: View {
+    @ObservedObject var model: TextEditorModel
+    let item: TextItem
+    let canvasFrame: CGRect
+
+    private var isSelected: Bool { model.selectedID == item.id }
+
+    var body: some View {
+        Text(item.text.isEmpty ? "Tap to edit" : item.text)
+            .font(.system(size: item.fontSize, weight: .bold))
+            .foregroundStyle(item.color)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                // Selected item gets a subtle scrim/border so it's clear which
+                // text is currently active for drag/zoom/color/edit.
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.black.opacity(isSelected ? 0.18 : 0))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color.white.opacity(isSelected ? 0.6 : 0), lineWidth: 1)
+            )
+            .position(item.position)
+            .gesture(dragGesture.simultaneously(with: zoomGesture))
+            .onTapGesture {
+                model.select(item.id)
+            }
+            .frame(width: canvasFrame.width, height: canvasFrame.height, alignment: .topLeading)
+            .allowsHitTesting(true)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                model.select(item.id)
+                if !model.isDraggingText {
+                    model.beginTextDrag(for: item.id)
+                }
+                model.dragText(translation: value.translation, bounds: CGRect(origin: .zero, size: canvasFrame.size))
+            }
+            .onEnded { _ in
+                model.endTextDrag()
+            }
+    }
+
+    /// Pinch-to-zoom: scales the item's `fontSize` relative to a snapshot
+    /// taken when the pinch begins, same translation-from-snapshot principle
+    /// as the drag gesture above.
+    private var zoomGesture: some Gesture {
+        MagnificationGesture()
+            .onChanged { scale in
+                model.select(item.id)
+                if !model.isZoomingText {
+                    model.beginTextZoom(for: item.id)
+                }
+                model.zoomText(scale: scale)
+            }
+            .onEnded { _ in
+                model.endTextZoom()
+            }
+    }
+}
+
+/// Invisible UITextField bridge so the keyboard can drive the selected
+/// text item's content. SwiftUI's native TextField requires visible chrome;
+/// this keeps the on-image Text views as the only visible representation
+/// while still using the system keyboard for input.
+private struct HiddenTextInput: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isActive: Bool
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField()
+        field.delegate = context.coordinator
+        field.returnKeyType = .done
+        field.isHidden = true // visually hidden; only used to summon the keyboard
+        return field
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        uiView.text = text
+        if isActive, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+        } else if !isActive, uiView.isFirstResponder {
+            uiView.resignFirstResponder()
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        let parent: HiddenTextInput
+        init(_ parent: HiddenTextInput) { self.parent = parent }
+
+        func textFieldDidChangeSelection(_ textField: UITextField) {
+            parent.text = textField.text ?? ""
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            parent.isActive = false
+            return true
+        }
+    }
+}
+
+// MARK: - Draggable hue color bar
+
+/// A vertical gradient strip spanning the hue spectrum, with a draggable
+/// handle. Dragging anywhere on the bar (not just the handle) updates the
+/// selected color immediately, matching the Instagram/Snapchat-style text
+/// color picker — just oriented top-to-bottom instead of left-to-right.
+private struct VerticalHueColorBar: View {
+    @Binding var selectedColor: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .top) {
+                RoundedRectangle(cornerRadius: geo.size.width / 2)
+                    .fill(
+                        LinearGradient(
+                            colors: hueGradientColors,
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                Circle()
+                    .fill(selectedColor)
+                    .frame(width: geo.size.width + 6, height: geo.size.width + 6)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                    .shadow(color: .black.opacity(0.3), radius: 2)
+                    .position(x: geo.size.width / 2, y: handleY(in: geo.size))
+            }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        updateColor(atY: value.location.y, height: geo.size.height)
+                    }
+            )
+        }
+    }
+
+    private var hueGradientColors: [Color] {
+        stride(from: 0.0, through: 1.0, by: 1.0 / 12.0).map {
+            Color(hue: $0, saturation: 0.9, brightness: 1.0)
+        }
+    }
+
+    /// Recovers the approximate hue of `selectedColor` to position the handle.
+    private func handleY(in size: CGSize) -> CGFloat {
+        var hue: CGFloat = 0
+        UIColor(selectedColor).getHue(&hue, saturation: nil, brightness: nil, alpha: nil)
+        return hue * size.height
+    }
+
+    private func updateColor(atY y: CGFloat, height: CGFloat) {
+        guard height > 0 else { return }
+        let clampedY = min(max(y, 0), height)
+        let hue = clampedY / height
         selectedColor = Color(hue: hue, saturation: 0.9, brightness: 1.0)
     }
 }
