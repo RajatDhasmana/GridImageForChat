@@ -7,17 +7,17 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "38301E92-D4A2-4285-91D5-CE5619D598D3"
+            uuid = "4642762C-E59C-4C02-B2D2-CDCE4F99D800"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "GridImageView/ImageTextEditorView.swift"
+            filePath = "GridImageView/VideoTextEditor.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1052"
-            endingLineNumber = "1052"
-            landmarkName = "body"
-            landmarkType = "24">
+            startingLineNumber = "825"
+            endingLineNumber = "825"
+            landmarkName = "unknown"
+            landmarkType = "0">
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>
