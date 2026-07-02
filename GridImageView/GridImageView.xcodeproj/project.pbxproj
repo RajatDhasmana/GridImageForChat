@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D6AE712E2FF71A4700781DBF /* VideoEditWithTrim.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AE712D2FF71A4700781DBF /* VideoEditWithTrim.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		D6268F792EF354E1006D5BF7 /* GridImageView.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GridImageView.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D6AE712D2FF71A4700781DBF /* VideoEditWithTrim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEditWithTrim.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +37,7 @@
 		D6268F702EF354E1006D5BF7 = {
 			isa = PBXGroup;
 			children = (
+				D6AE712D2FF71A4700781DBF /* VideoEditWithTrim.swift */,
 				D6268FD32EF47375006D5BF7 /* GridImageView */,
 				D6268F7A2EF354E1006D5BF7 /* Products */,
 			);
@@ -119,6 +125,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D6AE712E2FF71A4700781DBF /* VideoEditWithTrim.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
