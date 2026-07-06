@@ -19,23 +19,21 @@ import SwiftUI
 
 // MARK: - Public View
 
+struct TextEditItem: Identifiable {
+    
+    var id: String
+    var text: String
+    var position: CGPoint
+    var color: Color
+}
+
+
 struct ImageCropperViewNew: View {
-
-    let image: UIImage
-    /// Called with the cropped image, or nil if cropping failed.
-    let onComplete: (UIImage?) -> Void
-
-    /// Optional: called if the user cancels.
-    var onCancel: (() -> Void)? = nil
-
-    @StateObject private var model: CropModel
-
-    init(image: UIImage, onCancel: (() -> Void)? = nil, onComplete: @escaping (UIImage?) -> Void) {
-        self.image = image
-        self.onCancel = onCancel
-        self.onComplete = onComplete
-        _model = StateObject(wrappedValue: CropModel(image: image))
-    }
+    
+    @State var textItems: [TextEditItem] = TextEditItem.dummyItems
+    @StateObject private var model: CropModel = .init(image: UIImage(named: "dummyImage")!)
+    
+    @State var showPreview: Bool = true
 
     var body: some View {
         GeometryReader { geo in
@@ -43,36 +41,89 @@ struct ImageCropperViewNew: View {
                 Color.black.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-
                     // The image + crop overlay, sized to fit available space.
                     GeometryReader { imageGeo in
                         let fitted = model.fittedImageFrame(in: imageGeo.size)
+//                        let scale = fitted.width / model.rect.width
+//                        let transform = CGAffineTransform.identity
+//                            .translatedBy(x: -model.rect.minX, y: -model.rect.minY)
+//                            .scaledBy(x: scale, y: scale)
+                        
+//                        let target = model.aspectFitFrame(in: imageGeo.size)
+                            let scale = min(fitted.width / model.rect.width, fitted.height / model.rect.height)
+                            let offsetX = fitted.midX - model.rect.midX * scale
+                            let offsetY = fitted.midY - model.rect.midY * scale
+                        
+                        if showPreview {
+                            
+                            ZStack {
+                                Image(uiImage: model.image)
+                                    .resizable()
+                                    .frame(width: fitted.width, height: fitted.height)
 
-                        ZStack {
-                            Image(uiImage: image)
-                                .resizable()
+                                    .overlay {
+                                        ForEach(textItems) { item in
+                                            Text(item.text)
+                                                .foregroundStyle(item.color)
+                                                .position(item.position)
+                                                    
+                                        }
+                                    }
                                 .frame(width: fitted.width, height: fitted.height)
-                                .position(x: fitted.midX, y: fitted.midY)
+                            }
+                            .mask(
+                                Path { path in
+                                    path.addRect(model.rect) // rect in the same local coordinate space
+                                }
+                            )
+                            .scaleEffect(scale, anchor: .topLeading)
+                            .offset(x: offsetX, y: offsetY)
+                        } else {
+                            
+                            ZStack {
+                                Image(uiImage: model.image)
+                                    .resizable()
+                                    .frame(width: fitted.width, height: fitted.height)
 
-                            CropOverlayNew(model: model, imageFrame: fitted)
-                        }
-                        .onAppear {
-                            model.setupInitialRect(in: fitted)
-                        }
-                        .onChange(of: imageGeo.size) { _, newSize in
-                            // Re-fit on rotation / size change, preserving relative shape.
-                            let newFitted = model.fittedImageFrame(in: newSize)
-                            model.rescaleRect(to: newFitted)
+                                    .overlay {
+                                        ForEach(textItems) { item in
+                                            Text(item.text)
+                                                .foregroundStyle(item.color)
+                                                .position(item.position)
+                                        }
+                                    }
+                                    .mask(
+                                           Path { path in
+                                               path.addRect(model.rect) // rect in the same local coordinate space
+                                           }
+                                       )
+                                
+                                CropOverlayNew(model: model, imageFrame: fitted)
+                            }
+                            .onAppear {
+                                
+                                print("fitted in else => \(fitted)")
+                                model.setupInitialRect(in: fitted)
+                            }
+                            .onChange(of: imageGeo.size) { _, newSize in
+                                // Re-fit on rotation / size change, preserving relative shape.
+                                let newFitted = model.fittedImageFrame(in: newSize)
+                                model.rescaleRect(to: newFitted)
+                                print("on change imagegeo")
+                            }
                         }
                     }
-                    .padding(.horizontal, 12)
+//                    .padding(.horizontal, 12)
 
                     Spacer(minLength: 0)
 
                     controls
                         .padding(.bottom, max(geo.safeAreaInsets.bottom, 16))
                 }
+                .onChange(of: model.rect) { oldValue, newValue in
+                    print("new rect value => \(model.rect)")
+                }
+
             }
         }
         .statusBarHidden(false)
@@ -81,7 +132,8 @@ struct ImageCropperViewNew: View {
     private var controls: some View {
         HStack {
             Button {
-                onCancel?()
+//                onCancel?()
+                print("cancel tapped")
             } label: {
                 Text("Cancel")
                     .foregroundStyle(.white)
@@ -93,6 +145,7 @@ struct ImageCropperViewNew: View {
 
             Button {
                 model.resetRectToFullImage()
+                showPreview = false
             } label: {
                 Image(systemName: "arrow.counterclockwise")
                     .foregroundStyle(.white)
@@ -103,8 +156,10 @@ struct ImageCropperViewNew: View {
             Spacer()
 
             Button {
-                let result = model.performCrop()
-                onComplete(result)
+//                let result = model.performCrop()
+//                onComplete(result)
+                print("done tapped")
+                showPreview = true
             } label: {
                 Text("Done")
                     .fontWeight(.semibold)
@@ -309,6 +364,8 @@ final class CropModel: ObservableObject {
               containerSize.width > 0, containerSize.height > 0 else {
             return CGRect(origin: .zero, size: containerSize)
         }
+        
+        return CGRect(origin: .zero, size: containerSize)
         let imageAspect = image.size.width / image.size.height
         let containerAspect = containerSize.width / containerSize.height
 
@@ -333,11 +390,16 @@ final class CropModel: ObservableObject {
     func resetRectToFullImage() {
         let f = currentImageFrame
         guard f.width > 0, f.height > 0 else { return }
+        rect = currentImageFrame
+
         let dx = min(inset, f.width * 0.15)
         let dy = min(inset, f.height * 0.15)
         // rect is LOCAL to the overlay (sized to f.width x f.height),
         // so its coordinate space is (0,0)-(f.width, f.height).
-        rect = CGRect(x: dx, y: dy, width: f.width - dx * 2, height: f.height - dy * 2)
+//        rect = currentImageFrame
+//        rect = CGRect(x: 0, y: 0, width: f.width, height: f.height)
+//        rect = CGRect(x: dx, y: dy, width: f.width - dx * 2, height: f.height - dy * 2)
+        print("rect from resetRectToFullImage => \(rect)")
     }
 
     /// Rescales the rect proportionally when the image frame changes size
@@ -398,6 +460,8 @@ final class CropModel: ObservableObject {
         }
 
         rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        print("rect from drag corner => \(rect)")
+
     }
 
     func dragEdge(_ edge: Edge, translation: CGSize, bounds: CGRect) {
@@ -416,6 +480,8 @@ final class CropModel: ObservableObject {
         }
 
         rect = CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        print("rect from drag edge => \(rect)")
+
     }
 
     private func clampValue(_ v: CGFloat, min lo: CGFloat, max hi: CGFloat) -> CGFloat {
@@ -428,35 +494,35 @@ final class CropModel: ObservableObject {
 
     /// Maps the on-screen rect (local overlay coords) into the UIImage's own
     /// pixel coordinate space and performs a plain rectangular crop.
-    func performCrop() -> UIImage? {
-        guard let cgImage = image.cgImage else { return nil }
-        let frame = currentImageFrame
-        guard frame.width > 0, frame.height > 0 else { return nil }
-
-        // Scale factor from displayed (point) coordinates to actual pixel coordinates.
-        let pixelWidth = CGFloat(cgImage.width)
-        let pixelHeight = CGFloat(cgImage.height)
-        let sx = pixelWidth / frame.width
-        let sy = pixelHeight / frame.height
-
-        var pixelRect = CGRect(
-            x: rect.minX * sx,
-            y: rect.minY * sy,
-            width: rect.width * sx,
-            height: rect.height * sy
-        )
-
-        // Clamp to image bounds and round to whole pixels to avoid edge artifacts.
-        pixelRect = pixelRect.intersection(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
-        pixelRect = pixelRect.integral
-
-        guard pixelRect.width > 0, pixelRect.height > 0,
-              let croppedCG = cgImage.cropping(to: pixelRect) else {
-            return nil
-        }
-
-        return UIImage(cgImage: croppedCG, scale: image.scale, orientation: image.imageOrientation)
-    }
+//    func performCrop() -> UIImage? {
+//        guard let cgImage = image.cgImage else { return nil }
+//        let frame = currentImageFrame
+//        guard frame.width > 0, frame.height > 0 else { return nil }
+//
+//        // Scale factor from displayed (point) coordinates to actual pixel coordinates.
+//        let pixelWidth = CGFloat(cgImage.width)
+//        let pixelHeight = CGFloat(cgImage.height)
+//        let sx = pixelWidth / frame.width
+//        let sy = pixelHeight / frame.height
+//
+//        var pixelRect = CGRect(
+//            x: rect.minX * sx,
+//            y: rect.minY * sy,
+//            width: rect.width * sx,
+//            height: rect.height * sy
+//        )
+//
+//        // Clamp to image bounds and round to whole pixels to avoid edge artifacts.
+//        pixelRect = pixelRect.intersection(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+//        pixelRect = pixelRect.integral
+//
+//        guard pixelRect.width > 0, pixelRect.height > 0,
+//              let croppedCG = cgImage.cropping(to: pixelRect) else {
+//            return nil
+//        }
+//
+//        return UIImage(cgImage: croppedCG, scale: image.scale, orientation: image.imageOrientation)
+//    }
 }
 
 // MARK: - Preview
@@ -522,13 +588,91 @@ extension ImageCropperViewPreviewHost {
         
         ZStack {
             if let img = UIImage(named: "dummyImage") {
-                ImageCropperViewNew(image: img) { cropped in
-                    resultImage = cropped
-                }
+//                ImageCropperViewNew(image: img) { cropped in
+//                    resultImage = cropped
+//                }
+                
+                EmptyView()
             } else {
                 Text("No preview image")
             }
         }
+        
+    }
+}
+
+extension TextEditItem {
+    static var dummyItems: [TextEditItem] {
+        [
+            TextEditItem(
+                id: "1",
+                text: "Hello!",
+                position: CGPoint(x: 100, y: 150),
+                color: .red
+            ),
+            TextEditItem(
+                id: "2",
+                text: "Center Text",
+                position: CGPoint(x: 180, y: 300),
+                color: .red
+            ),
+            TextEditItem(
+                id: "3",
+                text: "Bottom Caption",
+                position: CGPoint(x: 150, y: 500),
+                color: .red
+            ),
+            TextEditItem(
+                id: "4",
+                text: "Edge Case",
+                position: CGPoint(x: 20, y: 20), // near top-left corner — likely clipped
+                color: .red
+            ),
+            TextEditItem(
+                id: "5",
+                text: "Far Right",
+                position: CGPoint(x: 350, y: 200), // near right edge — likely clipped
+                color: .green
+            ),
+            TextEditItem(
+                id: "6",
+                text: "🎉 Emoji Test 🎉",
+                position: CGPoint(x: 150, y: 400),
+                color: .orange
+            ),
+            TextEditItem(
+                id: "7",
+                text: "A very long line of text to test wrapping and bounds",
+                position: CGPoint(x: 150, y: 250),
+                color: .pink
+            )
+        ]
+    }
+}
+
+extension CropModel {
+    /// Aspect-fit frame for the *original image's* aspect ratio within a container —
+    /// used only to decide where/how big the cropped preview should appear.
+    func aspectFitFrame(in containerSize: CGSize) -> CGRect {
+        guard image.size.width > 0, image.size.height > 0,
+              containerSize.width > 0, containerSize.height > 0 else {
+            return CGRect(origin: .zero, size: containerSize)
+        }
+        let imageAspect = image.size.width / image.size.height
+        let containerAspect = containerSize.width / containerSize.height
+
+        var size = containerSize
+        if imageAspect > containerAspect {
+            size.width = containerSize.width
+            size.height = containerSize.width / imageAspect
+        } else {
+            size.height = containerSize.height
+            size.width = containerSize.height * imageAspect
+        }
+        let origin = CGPoint(x: (containerSize.width - size.width) / 2,
+                              y: (containerSize.height - size.height) / 2)
+        return CGRect(origin: origin, size: size)
+        
         
     }
 }

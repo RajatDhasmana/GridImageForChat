@@ -25,7 +25,8 @@ struct ContentView: View {
 //        ImagePickerFlowSignal()
 //        ImageCropperViewPreviewHost()
 //        ImageTextEditorViewPreviewHost()
-        VideoTextEditorPreviewHost()
+//        VideoTextEditorPreviewHost()
+        ImageCropperViewNew()
 
     }
 }
